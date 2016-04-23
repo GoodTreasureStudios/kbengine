@@ -79,6 +79,9 @@ struct WitnessInfo
 class Witness : public PoolObject, public Updatable
 {
 public:
+	typedef std::list<EntityRef*> AOI_ENTITIES;
+	typedef std::map<ENTITY_ID, EntityRef*> AOI_ENTITIES_MAP;
+
 	Witness();
 	~Witness();
 	
@@ -91,14 +94,16 @@ public:
 	static SmartPoolObjectPtr createSmartPoolObj();
 
 	static ObjectPool<Witness>& ObjPool();
+	static Witness* createPoolObject();
+	static void reclaimPoolObject(Witness* obj);
 	void onReclaimObject();
 
 	virtual size_t getPoolObjectBytes()
 	{
 		size_t bytes = sizeof(pEntity_)
 		 + sizeof(aoiRadius_) + sizeof(aoiHysteresisArea_)
-		  + sizeof(pAOITrigger_) + sizeof(clientAOISize_)
-		  + sizeof(lastBasePos) + (sizeof(EntityRef*) * aoiEntities_.size());
+		 + sizeof(pAOITrigger_) + sizeof(pAOIHysteresisAreaTrigger_) + sizeof(clientAOISize_)
+		 + sizeof(lastBasePos) + (sizeof(EntityRef*) * aoiEntities_map_.size());
 
 		return bytes;
 	}
@@ -129,25 +134,25 @@ public:
 	void onEnterSpace(Space* pSpace);
 	void onLeaveSpace(Space* pSpace);
 
-	void onEnterAOI(Entity* pEntity);
-	void onLeaveAOI(Entity* pEntity);
+	void onEnterAOI(AOITrigger* pAOITrigger, Entity* pEntity);
+	void onLeaveAOI(AOITrigger* pAOITrigger, Entity* pEntity);
 	void _onLeaveAOI(EntityRef* pEntityRef);
 
 	/**
-		写Volatile数据到流
+		获得实体本次同步Volatile数据的标记
 	*/
-	uint32 addEntityVolatileDataToStream(MemoryStream* mstream, Entity* otherEntity);
+	uint32 getEntityVolatileDataUpdateFlags(Entity* otherEntity);
 	
 
-	void addSmartAOIEntityMessageToBundle(Network::Bundle* pBundle, const Network::MessageHandler& normalMsgHandler, 
-		const Network::MessageHandler& optimizedMsgHandler, ENTITY_ID entityID);
+	const Network::MessageHandler& getAOIEntityMessageHandler(const Network::MessageHandler& normalMsgHandler, 
+											   const Network::MessageHandler& optimizedMsgHandler, ENTITY_ID entityID, int& ialiasID);
 
-	bool entityID2AliasID(ENTITY_ID id, uint8& aliasID) const;
+	bool entityID2AliasID(ENTITY_ID id, uint8& aliasID);
 
 	/**
 		使用何种协议来更新客户端
 	*/
-	void addUpdateHeadToStream(Network::Bundle* pForwardBundle, uint32 flags, EntityRef* pEntityRef);
+	void addUpdateToStream(Network::Bundle* pForwardBundle, uint32 flags, EntityRef* pEntityRef);
 
 	/**
 		添加基础位置到更新包
@@ -158,8 +163,10 @@ public:
 		向witness客户端推送一条消息
 	*/
 	bool sendToClient(const Network::MessageHandler& msgHandler, Network::Bundle* pBundle);
-
-	INLINE EntityRef::AOI_ENTITIES& aoiEntities();
+	Network::Channel* pChannel();
+		
+	INLINE AOI_ENTITIES_MAP& aoiEntitiesMap();
+	INLINE AOI_ENTITIES& aoiEntities();
 
 	/** 获得aoientity的引用 */
 	INLINE EntityRef* getAOIEntityRef(ENTITY_ID entityID);
@@ -168,6 +175,10 @@ public:
 	INLINE bool entityInAOI(ENTITY_ID entityID);
 
 	INLINE AOITrigger* pAOITrigger();
+	INLINE AOITrigger* pAOIHysteresisAreaTrigger();
+	
+	void installAOITrigger();
+	void uninstallAOITrigger();
 
 	/**
 		重置AOI范围内的entities， 使其同步状态恢复到最初未同步的状态
@@ -178,24 +189,30 @@ private:
 	/**
 		如果aoi中entity数量小于256则只发送索引位置
 	*/
-	INLINE void _addAOIEntityIDToStream(MemoryStream* mstream, EntityRef* entityRef);
-	INLINE void _addAOIEntityIDToBundle(Network::Bundle* pBundle, EntityRef* entityRef);
-	INLINE void _addAOIEntityIDToBundle(Network::Bundle* pBundle, ENTITY_ID entityID);
-
+	INLINE void _addAOIEntityIDToBundle(Network::Bundle* pBundle, EntityRef* pEntityRef);
+	
+	/**
+		当update执行时aoi列表有改变的时候需要更新entityRef的aliasID
+	*/
+	void updateEntitiesAliasID();
+		
 private:
 	Entity*									pEntity_;
 
-	float									aoiRadius_;							// 当前entity的aoi半径
-	float									aoiHysteresisArea_;					// 当前entityAoi的一个滞后范围
+	// 当前entity的aoi半径
+	float									aoiRadius_;
+	// 当前entityAoi的一个滞后范围
+	float									aoiHysteresisArea_;
 
 	AOITrigger*								pAOITrigger_;
+	AOITrigger*								pAOIHysteresisAreaTrigger_;
 
-	EntityRef::AOI_ENTITIES					aoiEntities_;
+	AOI_ENTITIES							aoiEntities_;
+	AOI_ENTITIES_MAP						aoiEntities_map_;
 
 	Position3D								lastBasePos;
 
 	uint16									clientAOISize_;
-
 };
 
 }

@@ -133,7 +133,7 @@ bool ServerApp::loadConfig()
 }
 
 //-------------------------------------------------------------------------------------		
-bool ServerApp::installSingnals()
+bool ServerApp::installSignals()
 {
 	g_kbeSignalHandlers.attachApp(this);
 	g_kbeSignalHandlers.addSignal(SIGINT, this);
@@ -148,7 +148,7 @@ bool ServerApp::initialize()
 	if(!initThreadPool())
 		return false;
 
-	if(!installSingnals())
+	if(!installSignals())
 		return false;
 	
 	if(!loadConfig())
@@ -199,7 +199,7 @@ void ServerApp::queryWatcher(Network::Channel* pChannel, MemoryStream& s)
 	MemoryStream::SmartPoolObjectPtr readStreamPtr1 = MemoryStream::createSmartPoolObj();
 	WatcherPaths::root().readChildPaths(path, path, readStreamPtr1.get()->get());
 
-	Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
+	Network::Bundle* pBundle = Network::Bundle::createPoolObject();
 	ConsoleInterface::ConsoleWatcherCBMessageHandler msgHandler;
 	(*pBundle).newMessage(msgHandler);
 
@@ -208,7 +208,7 @@ void ServerApp::queryWatcher(Network::Channel* pChannel, MemoryStream& s)
 	(*pBundle).append(readStreamPtr.get()->get());
 	pChannel->send(pBundle);
 
-	Network::Bundle* pBundle1 = Network::Bundle::ObjPool().createObject();
+	Network::Bundle* pBundle1 = Network::Bundle::createPoolObject();
 	(*pBundle1).newMessage(msgHandler);
 
 	type = 1;
@@ -295,7 +295,7 @@ void ServerApp::onChannelTimeOut(Network::Channel * pChannel)
 
 	networkInterface_.deregisterChannel(pChannel);
 	pChannel->destroy();
-	Network::Channel::ObjPool().reclaimObject(pChannel);
+	Network::Channel::reclaimPoolObject(pChannel);
 }
 
 //-------------------------------------------------------------------------------------
@@ -331,6 +331,16 @@ void ServerApp::onRemoveComponent(const Components::ComponentInfos* pInfos)
 			g_componentType != INTERFACES_TYPE &&
 			g_componentType != BOTS_TYPE &&
 			g_componentType != WATCHER_TYPE)
+			this->shutDown(0.f);
+	}
+	else if (pInfos->componentType == CELLAPPMGR_TYPE)
+	{
+		if (g_componentType == CELLAPP_TYPE)
+			this->shutDown(0.f);
+	}
+	else if (pInfos->componentType == BASEAPPMGR_TYPE)
+	{
+		if (g_componentType == BASEAPP_TYPE)
 			this->shutDown(0.f);
 	}
 }
@@ -451,7 +461,7 @@ void ServerApp::lookApp(Network::Channel* pChannel)
 
 	DEBUG_MSG(fmt::format("ServerApp::lookApp: {}\n", pChannel->c_str()));
 
-	Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
+	Network::Bundle* pBundle = Network::Bundle::createPoolObject();
 	
 	(*pBundle) << g_componentType;
 	(*pBundle) << componentID_;
@@ -468,7 +478,7 @@ void ServerApp::reqCloseServer(Network::Channel* pChannel, MemoryStream& s)
 {
 	DEBUG_MSG(fmt::format("ServerApp::reqCloseServer: {}\n", pChannel->c_str()));
 
-	Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
+	Network::Bundle* pBundle = Network::Bundle::createPoolObject();
 	
 	bool success = true;
 	(*pBundle) << success;
@@ -489,28 +499,26 @@ void ServerApp::hello(Network::Channel* pChannel, MemoryStream& s)
 	s >> verInfo >> scriptVerInfo;
 	s.readBlob(encryptedKey);
 
-	char buf[1024];
+	char buf[MAX_BUF];
+	std::string encryptedKey_str;
 
-	if(encryptedKey.size() > 3)
+	if (encryptedKey.size() > 3 && encryptedKey.size() <= 65535)
 	{
-		char *c = buf;
-
-		for (int i=0; i < (int)encryptedKey.size(); ++i)
+		for (int i = 0; i < (int)encryptedKey.size(); ++i)
 		{
-			c += sprintf(c, "%02hhX ", (unsigned char)encryptedKey.data()[i]);
+			memset(buf, 0, MAX_BUF);
+			kbe_snprintf(buf, MAX_BUF / 2, "%02hhX ", (unsigned char)encryptedKey.data()[i]);
+			encryptedKey_str += buf;
 		}
-
-		c[-1] = '\0';
 	}
 	else
 	{
 		encryptedKey = "";
-		sprintf(buf, "None");
-		buf[4] = '\0';
+		encryptedKey_str = "None";
 	}
 
 	INFO_MSG(fmt::format("ServerApp::onHello: verInfo={}, scriptVerInfo={}, encryptedKey={}, addr:{}\n", 
-		verInfo, scriptVerInfo, buf, pChannel->c_str()));
+		verInfo, scriptVerInfo, encryptedKey_str, pChannel->c_str()));
 
 	if(verInfo != KBEVersion::versionString())
 		onVersionNotMatch(pChannel);

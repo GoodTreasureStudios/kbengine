@@ -34,17 +34,23 @@ INLINE int Bundle::packetsSize() const
 	if(pCurrPacket_ && !pCurrPacket_->empty())
 		++i;
 
-	return i;
+	return (int)i;
+}
+
+INLINE void Bundle::currMsgLength(MessageLength1 v)
+{
+	currMsgLength_ = v;
 }
 
 INLINE MessageLength Bundle::currMsgLength() const 
 { 
 	return currMsgLength_; 
 }
-	
+
 INLINE void Bundle::pCurrMsgHandler(const Network::MessageHandler* pMsgHandler)
 { 
 	pCurrMsgHandler_ = pMsgHandler; 
+	currMsgID_ = pMsgHandler->msgID;
 }
 
 INLINE const Network::MessageHandler* Bundle::pCurrMsgHandler() const
@@ -72,14 +78,63 @@ INLINE MessageID Bundle::messageID() const
 	return currMsgID_; 
 }
 
+INLINE int32 Bundle::packetMaxSize() const
+{
+	return packetMaxSize_;
+}
+
+INLINE int32 Bundle::lastPacketSpace()
+{
+	if(packets_.size() > 0)
+		return packetMaxSize() - packets_.back()->wpos();
+	
+	return 0;
+}
+
+INLINE bool Bundle::packetHaveSpace()
+{
+	return lastPacketSpace() > 8;
+}
+
 INLINE int32 Bundle::numMessages() const
 { 
 	return numMessages_; 
 }
 
-INLINE void Bundle::finiCurrPacket(){ 
+INLINE void Bundle::pChannel(Channel* p)
+{
+	pChannel_= p;
+}
+
+INLINE void Bundle::finiCurrPacket()
+{ 
+	if(!pCurrPacket_)
+		return;
+	
 	packets_.push_back(pCurrPacket_); 
+	currMsgPacketCount(currMsgPacketCount() + 1);
 	pCurrPacket_ = NULL; 
 }
+
+INLINE void Bundle::currMsgPacketCount(uint32 v)
+{
+	currMsgPacketCount_ = v;
+}
+
+INLINE uint32 Bundle::currMsgPacketCount() const
+{
+	return currMsgPacketCount_;
+}
+
+INLINE void Bundle::currMsgLengthPos(size_t v)
+{
+	currMsgLengthPos_ = v;
+}
+
+INLINE size_t Bundle::currMsgLengthPos() const
+{
+	return currMsgLengthPos_;
+}
+
 }
 }
